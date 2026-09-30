@@ -7,13 +7,27 @@ from __future__ import annotations
 from typing import Any
 
 from app.seed import SEED_ROWS
+from app.services import equip_rules
+
+
+def _backfill_existing_rows() -> dict[str, list[dict[str, Any]]]:
+    """载入示例数据后，按各模块的统一口径回填存量记录。
+
+    养护机械的「保养到期/可用/报废」结论只保留 equip_rules 一份：回填只改写口径
+    推导出的状态字段，机械记录本身（编号、名称、型号）、停放场地、保养日期等
+    存量数据原样保留。
+    """
+    tables: dict[str, list[dict[str, Any]]] = {
+        name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
+    }
+    for row in tables.get("equip", []):
+        equip_rules.apply_status(row)
+    return tables
 
 
 class Store:
     def __init__(self) -> None:
-        self._tables: dict[str, list[dict[str, Any]]] = {
-            name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
-        }
+        self._tables: dict[str, list[dict[str, Any]]] = _backfill_existing_rows()
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)

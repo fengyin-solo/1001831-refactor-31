@@ -6,6 +6,7 @@
         <p class="page-desc">维护养护机械，围绕机械编号、机械名称、机械型号、停放场地做登记、筛选与状态流转。</p>
       </div>
       <div class="page-actions">
+        <RouterLink class="btn" to="/maintenance-reminders">查看保养提醒</RouterLink>
         <button class="btn primary" type="button" @click="openCreate">登记养护机械</button>
         <button class="btn" type="button" @click="exportRows">导出养护机械清单</button>
       </div>
@@ -65,21 +66,39 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-import { request } from '@/api/client'
+import { fetchJson, request } from '@/api/client'
 
 type Row = Record<string, string | number | null>
+type StatusSummary = Record<string, number>
 
 const ENDPOINT = '/api/equip'
 const columns = ["机械编号", "机械名称", "机械型号", "停放场地", "上次保养日", "下次保养日", "责任人", "机械状态"]
 const actions = ["安排保养", "确认可用", "报废机械"]
-const statuses = ["待保养", "可用", "保养中", "已报废"]
-const stats = [{"label": "在册机械", "value": 0}, {"label": "待保养机械", "value": 0}, {"label": "保养中机械", "value": 0}]
+// 统计口径完全来自服务端机械台账，界面不再自行按状态/保养日期计算。
+const stats = ref([
+  { label: "在册机械", value: 0 },
+  { label: "待保养机械", value: 0 },
+  { label: "可用机械", value: 0 },
+  { label: "保养中机械", value: 0 },
+  { label: "已报废机械", value: 0 },
+])
 
 const rows = ref<Row[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+
+async function loadSummary() {
+  const summary = await fetchJson<StatusSummary>(`${ENDPOINT}/status-summary`)
+  stats.value = [
+    { label: "在册机械", value: Object.values(summary).reduce((sum, count) => sum + count, 0) },
+    { label: "待保养机械", value: summary["待保养"] ?? 0 },
+    { label: "可用机械", value: summary["可用"] ?? 0 },
+    { label: "保养中机械", value: summary["保养中"] ?? 0 },
+    { label: "已报废机械", value: summary["已报废"] ?? 0 },
+  ]
+}
 
 function resetFilters() {
   filters.value = {}
@@ -114,13 +133,18 @@ async function reload() {
   errorMessage.value = ''
   const query = new URLSearchParams(filters.value as Record<string, string>).toString()
   try {
-    const response = await request(`${ENDPOINT}?${query}`)
-    if (!response.ok) {
-      throw new Error('养护机械列表读取失败')
-    }
-    const payload = await response.json()
-    rows.value = payload.items ?? []
-    total.value = payload.total ?? rows.value.length
+    await Promise.all([
+      (async () => {
+        const response = await request(`${ENDPOINT}?${query}`)
+        if (!response.ok) {
+          throw new Error('养护机械列表读取失败')
+        }
+        const payload = await response.json()
+        rows.value = payload.items ?? []
+        total.value = payload.total ?? rows.value.length
+      })(),
+      loadSummary(),
+    ])
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '养护机械列表读取失败'
   }

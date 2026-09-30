@@ -15,6 +15,7 @@ const Leak = () => import('@/views/leak/index.vue')
 const Dredge = () => import('@/views/dredge/index.vue')
 const Material = () => import('@/views/material/index.vue')
 const Equip = () => import('@/views/equip/index.vue')
+const Reminder = () => import('@/views/reminder/index.vue')
 const Traffic = () => import('@/views/traffic/index.vue')
 const Complaint = () => import('@/views/complaint/index.vue')
 const Fund = () => import('@/views/fund/index.vue')
@@ -38,6 +39,7 @@ const router = createRouter({
     { path: '/dredge', name: 'dredge', component: Dredge },
     { path: '/material', name: 'material', component: Material },
     { path: '/equip', name: 'equip', component: Equip },
+    { path: '/maintenance-reminders', name: 'maintenance-reminders', component: Reminder },
     { path: '/traffic', name: 'traffic', component: Traffic },
     { path: '/complaint', name: 'complaint', component: Complaint },
     { path: '/fund', name: 'fund', component: Fund },

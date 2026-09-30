@@ -21,6 +21,12 @@ class ActionResult(BaseModel):
     entry: dict[str, Any] | None = None
 
 
+class ReminderResult(PageResult[dict]):
+    """保养提醒分页结果：附带与台账一致的状态统计，页面不再自行判断状态。"""
+
+    status_summary: dict[str, int] = Field(default_factory=dict)
+
+
 class EntryPayload(BaseModel):
     """登记或修改一条业务记录时提交的字段集合。"""
 
