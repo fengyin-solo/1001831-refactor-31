@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 
 from app.schemas import ActionResult, EntryPayload, PageResult
+from app.services import equip_rules as rules
 from app.services.equip import EquipService
 
 router = APIRouter(prefix="/api/equip", tags=["养护机械"])
@@ -13,7 +14,27 @@ router = APIRouter(prefix="/api/equip", tags=["养护机械"])
 service = EquipService()
 
 LIST_FIELDS = ["机械编号", "机械名称", "机械型号", "停放场地", "上次保养日", "下次保养日", "责任人", "机械状态"]
-STATUSES = ["待保养", "可用", "保养中", "已报废"]
+# 状态枚举直接引用统一口径，接口层不再自己维护一份。
+STATUSES = rules.STATUS_ORDER
+
+
+@router.get("/stats")
+def entry_stats() -> dict[str, Any]:
+    """台账统计卡片：由统一口径汇总，界面拿到什么就展示什么。"""
+    return {"items": service.stats()}
+
+
+@router.get("/reminders", response_model=PageResult[dict])
+def list_reminders(
+    keyword: str | None = Query(default=None, description="按机械编号检索"),
+    page: int = 1,
+    size: int = 20,
+) -> PageResult[dict]:
+    """保养提醒：只返回统一口径判定为「待保养」的机械，已报废机械不会出现。"""
+    if size > 200:
+        raise HTTPException(status_code=400, detail="每页最多 200 条，请缩小分页范围")
+    items, total = service.list_reminders(keyword=keyword, page=page, size=size)
+    return PageResult(items=items, total=total, page=page, size=size)
 
 
 @router.get("", response_model=PageResult[dict])
@@ -58,7 +79,7 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     return ActionResult(ok=True, message=message, entry=entry)
 
 
-@router.get("/export")
+@router.get("/export/data")
 def export_entries() -> dict[str, Any]:
     """导出养护机械清单：返回当前过滤条件下的全量数据。"""
     items, total = service.list_entries(page=1, size=10000)

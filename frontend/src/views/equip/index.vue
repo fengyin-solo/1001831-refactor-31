@@ -18,10 +18,29 @@
       </article>
     </div>
 
+    <section class="reminder-box">
+      <h3>保养提醒</h3>
+      <p class="page-desc">名单由服务端按统一口径给出，已报废与保养中的机械不会出现。</p>
+      <ul class="reminder-list">
+        <li v-for="row in reminderRows" :key="String(row.id)">
+          <span>{{ row['机械编号'] }} · {{ row['机械名称'] }}</span>
+          <span class="muted">下次保养日：{{ row['下次保养日'] ?? '—' }} · 停放场地：{{ row['停放场地'] ?? '—' }}</span>
+        </li>
+        <li v-if="!reminderRows.length" class="muted">暂无到期机械</li>
+      </ul>
+    </section>
+
     <form class="filter-bar" @submit.prevent="reload">
       <label v-for="field in filterFields" :key="field" class="filter-item">
         <span>{{ field }}</span>
         <input v-model="filters[field]" :placeholder="`按${field}检索`" />
+      </label>
+      <label class="filter-item">
+        <span>机械状态</span>
+        <select v-model="filters.status">
+          <option value="">全部状态</option>
+          <option v-for="status in statuses" :key="status" :value="status">{{ status }}</option>
+        </select>
       </label>
       <button class="btn" type="submit">查询</button>
       <button class="btn ghost" type="button" @click="resetFilters">重置条件</button>
@@ -65,17 +84,26 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-import { request } from '@/api/client'
+import { fetchJson, request } from '@/api/client'
 
 type Row = Record<string, string | number | null>
+type Stat = { label: string; value: number }
+type PagePayload = { items?: Row[]; total?: number }
 
 const ENDPOINT = '/api/equip'
 const columns = ["机械编号", "机械名称", "机械型号", "停放场地", "上次保养日", "下次保养日", "责任人", "机械状态"]
 const actions = ["安排保养", "确认可用", "报废机械"]
+// 状态筛选枚举只用于渲染下拉项，到期/可用/报废的结论一律以服务端返回为准。
 const statuses = ["待保养", "可用", "保养中", "已报废"]
-const stats = [{"label": "在册机械", "value": 0}, {"label": "待保养机械", "value": 0}, {"label": "保养中机械", "value": 0}]
 
 const rows = ref<Row[]>([])
+const reminderRows = ref<Row[]>([])
+const stats = ref<Stat[]>([
+  { label: "在册机械", value: 0 },
+  { label: "待保养机械", value: 0 },
+  { label: "保养中机械", value: 0 },
+  { label: "已报废机械", value: 0 },
+])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
@@ -87,7 +115,7 @@ function resetFilters() {
 }
 
 function exportRows() {
-  window.open(`${ENDPOINT}/export`, '_blank')
+  window.open(`${ENDPOINT}/export/data`, '_blank')
 }
 
 function openCreate() {
@@ -99,14 +127,33 @@ async function runAction(action: string, row: Row) {
   try {
     const response = await request(`${ENDPOINT}/${row.id}/actions`, {
       method: 'POST',
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ values: { action } }),
     })
     if (!response.ok) {
       throw new Error('养护机械动作未生效，请稍后重试')
     }
-    await reload()
+    await Promise.all([reload(), reloadReminders(), reloadStats()])
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '养护机械操作失败'
+  }
+}
+
+async function reloadStats() {
+  try {
+    const payload = await fetchJson<{ items: Stat[] }>(`${ENDPOINT}/stats`)
+    stats.value = payload.items ?? stats.value
+  } catch {
+    // 统计读不出来时保留上一次结果，页面其他区块不受影响。
+  }
+}
+
+async function reloadReminders() {
+  try {
+    const payload = await fetchJson<PagePayload>(`${ENDPOINT}/reminders`)
+    // 保养提醒直接展示服务端名单，界面不再按保养日自行判断。
+    reminderRows.value = payload.items ?? []
+  } catch {
+    reminderRows.value = []
   }
 }
 
@@ -114,11 +161,7 @@ async function reload() {
   errorMessage.value = ''
   const query = new URLSearchParams(filters.value as Record<string, string>).toString()
   try {
-    const response = await request(`${ENDPOINT}?${query}`)
-    if (!response.ok) {
-      throw new Error('养护机械列表读取失败')
-    }
-    const payload = await response.json()
+    const payload = await fetchJson<PagePayload>(`${ENDPOINT}?${query}`)
     rows.value = payload.items ?? []
     total.value = payload.total ?? rows.value.length
   } catch (error) {
@@ -126,5 +169,35 @@ async function reload() {
   }
 }
 
-onMounted(reload)
+onMounted(() => {
+  void reload()
+  void reloadReminders()
+  void reloadStats()
+})
 </script>
+
+<style scoped>
+.reminder-box {
+  margin: 12px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color, #d9d9d9);
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.reminder-box h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.reminder-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.muted {
+  color: #888;
+}
+</style>

@@ -14,6 +14,11 @@ class Store:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
+        # 存量机械记录按统一口径回填 status/pending/abnormal/机械状态；
+        # 机械编号、停放场地、保养日期等业务字段保持原值，不在此处改动。
+        from app.services import equip_rules
+
+        equip_rules.backfill_equips(self._tables.get("equip", []))
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)
